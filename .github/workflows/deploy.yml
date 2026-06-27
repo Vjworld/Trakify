@@ -1,0 +1,41 @@
+name: Deploy Safe Static Site to Pages
+
+on:
+  push:
+    branches: ["main", "master"] # Triggers on whichever default branch you push to
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Inject Secrets into index.html
+        run: |
+          sed -i "s|placeholder_supabase_url|${{ secrets.SUPABASE_URL }}|g" index.html
+          sed -i "s|placeholder_supabase_anon_key|${{ secrets.SUPABASE_ANON_KEY }}|g" index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
