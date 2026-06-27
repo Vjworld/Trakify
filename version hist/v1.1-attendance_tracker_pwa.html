@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Attendance Tracker</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 900: '#312e81'
+                        },
+                        present: '#059669', // Emerald 600
+                        leave: '#e11d48',   // Rose 600
+                        half: '#d97706',    // Amber 600
+                        holiday: '#2563eb', // Blue 600
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.05)',
+                        'glass-dark': '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Refined CSS Variables for Professional Theming */
+        :root {
+            --bg-color: #f8fafc; /* slate-50 */
+            --surface-color: #ffffff;
+            --border-color: #e2e8f0; /* slate-200 */
+            --text-main: #0f172a; /* slate-900 */
+            --text-muted: #64748b; /* slate-500 */
+        }
+        
+        .dark {
+            --bg-color: #0f172a; /* slate-900 */
+            --surface-color: #1e293b; /* slate-800 */
+            --border-color: #334155; /* slate-700 */
+            --text-main: #f8fafc; /* slate-50 */
+            --text-muted: #94a3b8; /* slate-400 */
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.4s ease, color 0.4s ease;
+            background-image: radial-gradient(circle at top right, rgba(99, 102, 241, 0.03) 0%, transparent 40%),
+                              radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.03) 0%, transparent 40%);
+        }
+
+        .dark body {
+            background-image: radial-gradient(circle at top right, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+                              radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05) 0%, transparent 40%);
+        }
+
+        .surface {
+            background-color: var(--surface-color);
+            border-color: var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        /* Premium Micro-Animations */
+        .pop-anim {
+            animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.12); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
+            100% { transform: scale(1); }
+        }
+
+        .fade-in-up {
+            opacity: 0;
+            animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Glassmorphism Modal */
+        .modal-overlay {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .modal-overlay.active .modal-content {
+            transform: translateY(0);
+        }
+        
+        /* Elegant Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        .day-cell {
+            transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .day-cell:active {
+            transform: scale(0.92);
+        }
+
+        /* Background blur utilities */
+        .glass-header {
+            background-color: rgba(var(--surface-color-rgb), 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen pb-20 selection:bg-brand-500 selection:text-white">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-40 border-b border-gray-200/80 dark:border-gray-800/80 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl shadow-sm transition-colors duration-300">
+        <div class="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center p-4 gap-3 md:gap-0">
+            <div class="flex justify-between w-full md:w-auto items-center">
+                <h1 class="text-xl md:text-2xl font-bold flex items-center gap-2 tracking-tight">
+                    <div class="bg-gradient-to-br from-brand-500 to-indigo-600 p-1.5 rounded-lg shadow-lg shadow-brand-500/20">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                    </div>
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-300">Trackify</span>
+                </h1>
+                
+                <!-- Mobile Theme Toggle -->
+                <button onclick="toggleTheme()" class="md:hidden p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-300 transition shadow-sm" aria-label="Toggle theme">
+                    <svg id="moonIconMobile" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    <svg id="sunIconMobile" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </button>
+            </div>
+            
+            <div class="flex items-center gap-2 sm:gap-3 md:gap-4 w-full md:w-auto justify-between md:justify-end">
+                
+                <!-- Cloud Sync Badge -->
+                <button id="cloudSyncBtn" onclick="openAuthModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:scale-105 border border-slate-200/50 dark:border-slate-700/50 shadow-inner shrink-0">
+                    <span id="syncDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span id="syncText" class="hidden sm:inline">Cloud: Offline Account</span>
+                    <span class="sm:hidden">Offline</span>
+                </button>
+
+                <!-- Profile Switcher -->
+                <div class="flex items-center bg-slate-100/80 dark:bg-slate-800/80 rounded-xl p-1 border border-slate-200/50 dark:border-slate-700/50 shadow-inner flex-grow md:flex-grow-0">
+                    <select id="profileSelect" onchange="switchProfile(this.value)" class="bg-transparent text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer pl-2 pr-1 w-full max-w-[120px] sm:max-w-none text-ellipsis appearance-none">
+                        <!-- Populated dynamically -->
+                    </select>
+                    <button onclick="openNewProfileModal()" class="p-1 sm:p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition shadow-sm hover:shadow shrink-0" title="Add New Profile">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                </div>
+
+                <!-- Year Selector -->
+                <div class="flex items-center bg-slate-100/80 dark:bg-slate-800/80 rounded-xl p-1 border border-slate-200/50 dark:border-slate-700/50 shadow-inner shrink-0">
+                    <button onclick="changeYear(-1)" class="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    <span id="yearDisplay" class="font-bold px-2 sm:px-3 w-12 sm:w-16 text-center tracking-wide text-sm sm:text-base">2026</span>
+                    <button onclick="changeYear(1)" class="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+
+                <!-- Desktop Theme Toggle -->
+                <button onclick="toggleTheme()" class="hidden md:block p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-300 transition shadow-sm shrink-0" aria-label="Toggle theme">
+                    <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-5xl mx-auto p-4 mt-6">
+        
+        <!-- Overall Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.1s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-emerald-500 to-emerald-700 tracking-tight" id="statPresent">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Present</span>
+            </div>
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.2s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl group-hover:bg-rose-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-rose-500 to-rose-700 tracking-tight" id="statLeaves">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Leaves</span>
+            </div>
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.3s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-amber-500 to-amber-700 tracking-tight" id="statHalf">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Half Days</span>
+            </div>
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.4s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-blue-500 to-blue-700 tracking-tight" id="statHoliday">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Holidays</span>
+            </div>
+        </div>
+
+        <!-- Leave Quota & Attendance Rate -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+            <div class="surface relative overflow-hidden p-6 rounded-3xl border shadow-glass dark:shadow-glass-dark flex items-center justify-between fade-in-up" style="animation-delay: 0.5s;">
+                <div class="absolute -left-10 -bottom-10 w-32 h-32 bg-brand-500/10 rounded-full blur-3xl"></div>
+                <div class="relative z-10">
+                    <h3 class="text-slate-500 dark:text-slate-400 font-semibold text-xs uppercase tracking-wider">Attendance Rate</h3>
+                    <div class="text-3xl font-extrabold mt-1 text-slate-800 dark:text-white" id="attendanceRate">0%</div>
+                </div>
+                <div class="relative z-10 w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-50 to-indigo-100 dark:from-brand-900/40 dark:to-indigo-800/40 border border-brand-100 dark:border-brand-800/50 flex items-center justify-center text-brand-600 dark:text-brand-400 shadow-inner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+            </div>
+            <div class="surface relative overflow-hidden p-6 rounded-3xl border shadow-glass dark:shadow-glass-dark fade-in-up flex flex-col justify-center" style="animation-delay: 0.6s;">
+                <div class="flex justify-between items-end mb-3 relative z-10">
+                    <div>
+                        <h3 class="text-slate-500 dark:text-slate-400 font-semibold text-xs uppercase tracking-wider">Leave Quota</h3>
+                        <div class="text-sm font-bold mt-1 text-slate-800 dark:text-white">Used: <span id="quotaUsedText" class="text-rose-500">0 / 18</span></div>
+                    </div>
+                    <div class="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <label class="text-xs text-slate-500 font-medium pl-1">Max:</label>
+                        <input type="number" id="leaveQuotaInput" onchange="updateQuota(this.value)" class="w-12 py-0.5 text-sm font-bold rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:ring-2 focus:ring-brand-500 text-center transition shadow-sm" min="0">
+                    </div>
+                </div>
+                <div class="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden relative z-10 shadow-inner">
+                    <div id="quotaProgress" class="h-full bg-gradient-to-r from-rose-400 to-rose-600 transition-all duration-700 ease-out rounded-full relative" style="width: 0%">
+                        <div class="absolute inset-0 bg-white/20 w-full animate-pulse"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Months Grid -->
+        <div class="flex items-center gap-3 mb-6 fade-in-up" style="animation-delay: 0.7s;">
+            <h2 class="text-lg font-bold text-slate-800 dark:text-white">Monthly Breakdown</h2>
+            <div class="h-px bg-slate-200 dark:bg-slate-800 flex-grow"></div>
+        </div>
+        <div id="monthsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            <!-- Dynamically populated -->
+        </div>
+
+        <!-- Data Management -->
+        <div class="mt-16 p-6 rounded-3xl surface border shadow-glass dark:shadow-glass-dark fade-in-up" style="animation-delay: 0.8s;">
+            <h3 class="text-sm font-bold mb-4 uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x1="12" y1="3" y2="15"/></svg>
+                Data Management
+            </h3>
+            <div class="flex flex-wrap gap-4">
+                <button onclick="exportData()" class="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-sm hover:shadow border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-brand-500 group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x1="12" y1="15" y2="3"/></svg>
+                    Export JSON
+                </button>
+                <label class="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-5 py-2.5 rounded-xl font-semibold text-sm cursor-pointer transition-all shadow-sm hover:shadow border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500 group-hover:translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x1="12" y1="3" y2="15"/></svg>
+                    Import JSON
+                    <input type="file" accept=".json" class="hidden" onchange="importData(event)">
+                </label>
+            </div>
+        </div>
+
+        <!-- AI Assistant -->
+        <div class="mt-6 p-6 rounded-3xl bg-gradient-to-br from-indigo-50/50 to-purple-50/50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-100 dark:border-indigo-800/50 shadow-glass dark:shadow-glass-dark fade-in-up" style="animation-delay: 0.85s;">
+            <h3 class="text-sm font-bold mb-4 uppercase tracking-wider text-brand-600 dark:text-brand-400 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                AI Assistant ✨
+            </h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400 mb-4">Leverage Gemini to analyze your time-off trends or instantly draft professional emails based on your current data.</p>
+            <div class="flex flex-wrap gap-4">
+                <button onclick="generateInsights()" class="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md shadow-brand-500/30 hover:shadow-lg border border-transparent">
+                    Analyze My Attendance ✨
+                </button>
+                <button onclick="openLeaveDrafter()" class="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-sm hover:shadow border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                    Draft Leave Email ✨
+                </button>
+            </div>
+            
+            <!-- Output Container for Insights -->
+            <div id="aiResponseContainer" class="hidden mt-5 p-4 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-2xl text-sm text-slate-700 dark:text-slate-200 leading-relaxed shadow-inner">
+                <div id="aiResponseContent"></div>
+            </div>
+        </div>
+
+        <!-- Feedback & Bugs -->
+        <div class="mt-8 mb-4 text-center fade-in-up" style="animation-delay: 0.9s;">
+            <button onclick="openFeedbackModal()" class="text-xs font-semibold text-slate-400 hover:text-brand-500 transition-colors inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                Feedback / Report a Bug
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Modal for Leave Drafter -->
+    <div id="leaveDrafterModal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/60 p-4">
+        <div class="modal-content surface w-full max-w-lg rounded-3xl flex flex-col shadow-2xl border border-white/20 dark:border-slate-700/50 relative overflow-hidden">
+            <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
+                <h2 class="text-xl font-extrabold tracking-tight flex items-center gap-2">
+                    <span class="text-brand-500">✨</span> Draft Leave Email
+                </h2>
+                <button onclick="closeLeaveDrafter()" class="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="p-5 overflow-y-auto max-h-[70vh]">
+                <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Provide a brief reason and any relevant details (e.g., dates). Gemini will craft a professional email for you.</p>
+                
+                <label class="block text-xs font-bold uppercase text-slate-500 mb-2">Reason / Details</label>
+                <textarea id="leaveReasonInput" rows="3" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all mb-4 text-slate-800 dark:text-slate-100" placeholder="e.g. Need to take next Thursday and Friday off due to a family event."></textarea>
+                
+                <div id="leaveDrafterError" class="hidden mb-4 p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-sm font-medium rounded-xl border border-rose-200 dark:border-rose-800/50"></div>
+                
+                <button id="btnGenerateEmail" onclick="generateLeaveEmail()" class="w-full flex justify-center items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-5 py-3 rounded-xl font-bold text-sm transition-all shadow-md shadow-brand-500/30 mb-6">
+                    Generate Email ✨
+                </button>
+
+                <div id="leaveEmailOutputContainer" class="hidden">
+                    <label class="flex justify-between items-end mb-2">
+                        <span class="text-xs font-bold uppercase text-slate-500">Generated Email</span>
+                        <button id="btnCopyEmail" onclick="copyLeaveEmail()" class="text-xs font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 bg-brand-50 dark:bg-brand-900/30 px-2 py-1 rounded-md transition-colors">Copy</button>
+                    </label>
+                    <textarea id="leaveEmailOutput" rows="8" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:outline-none text-slate-800 dark:text-slate-200"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cloud Auth Modal -->
+    <div id="authModal" class="fixed inset-0 bg-slate-900/60 dark:bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="surface border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl transform transition-all relative">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white" id="authTitle">Sync via Cloud Account</h3>
+                <button onclick="closeAuthModal()" class="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            
+            <div id="authForm" class="space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Email Address</label>
+                    <input type="email" id="authEmail" class="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all text-sm" placeholder="name@domain.com">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Password</label>
+                    <input type="password" id="authPassword" class="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all text-sm" placeholder="••••••••">
+                </div>
+                
+                <button onclick="handleAuthAction()" id="primaryAuthBtn" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-3 rounded-xl transition-all mt-2 shadow-md shadow-brand-500/30 text-sm">
+                    Log In / Create Account
+                </button>
+                
+                <p id="authError" class="text-xs text-rose-500 text-center hidden font-medium mt-2 bg-rose-50 dark:bg-rose-900/20 p-2 rounded-lg"></p>
+            </div>
+
+            <div id="authSignoutForm" class="hidden text-center space-y-5 py-2">
+                <p class="text-sm text-slate-600 dark:text-slate-400">Logged in as: <br><span id="userEmailDisplay" class="font-bold text-slate-900 dark:text-white text-base mt-1 block"></span></p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="triggerManualSync()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold py-2.5 rounded-xl transition-all shadow-md shadow-brand-500/30">Force Sync Now</button>
+                    <button onclick="handleSignOut()" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-500 dark:text-rose-400 text-xs font-bold py-2.5 rounded-xl transition-all shadow-sm">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal / Bottom Sheet for Calendar -->
+    <div id="calendarModal" class="modal-overlay fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-slate-900/60 dark:bg-black/60">
+        <div class="modal-content surface w-full max-w-lg h-[85vh] sm:h-auto sm:max-h-[90vh] sm:rounded-3xl rounded-t-3xl flex flex-col shadow-2xl border border-white/20 dark:border-slate-700/50 relative overflow-hidden">
+            
+            <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-20 sm:rounded-t-3xl rounded-t-3xl">
+                <h2 id="modalTitle" class="text-2xl font-extrabold tracking-tight">Month Year</h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="quickFillMonth()" title="Quick Fill Weekdays" class="px-3 py-1.5 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 border border-amber-200 dark:border-amber-500/20 rounded-xl transition-all flex items-center gap-1.5 text-sm font-bold shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Fill Days
+                    </button>
+                    <button onclick="closeModal()" class="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-5 overflow-y-auto flex-grow bg-slate-50/50 dark:bg-slate-900/30">
+                <!-- Legend -->
+                <div class="flex flex-wrap justify-center gap-4 mb-6 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300">
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-sm shadow-emerald-500/50"></div> Present</div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-rose-400 to-rose-600 shadow-sm shadow-rose-500/50"></div> Leave</div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm shadow-amber-500/50"></div> Half-Day</div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 shadow-sm shadow-blue-500/50"></div> Holiday</div>
+                </div>
+
+                <!-- Weekdays Header -->
+                <div class="grid grid-cols-7 gap-2 text-center font-bold text-slate-400 dark:text-slate-500 text-xs sm:text-sm mb-3 uppercase tracking-wider">
+                    <div class="text-rose-400 dark:text-rose-500/70">Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div class="text-rose-400 dark:text-rose-500/70">Sat</div>
+                </div>
+
+                <!-- Calendar Grid -->
+                <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-sm sm:text-base">
+                    <!-- Days will be generated here -->
+                </div>
+            </div>
+            
+            <div class="p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 sm:rounded-b-3xl flex justify-center items-center text-xs font-medium text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
+                Tap a day to cycle its status
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- API Keys & Integration ---
+        const apiKey = ""; // Will be populated by the execution environment
+        
+        // --- SUPABASE CLOUD SYNC CONFIGURATION ---
+        const SUPABASE_URL = "placeholder_supabase_url"; 
+		const SUPABASE_ANON_KEY = "placeholder_supabase_anon_key";
+		//const SUPABASE_URL = "https://your-project-id.supabase.co"; 
+        //const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."; // Use your Anon Public Key
+
+        // Using supabaseClient to avoid naming collision with the global 'supabase' object loaded via CDN
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
+
+        // --- Core State & Multi-Profile Initialization ---
+        let currentYear = 2026;
+        let selectedMonth = null;
+        
+        // 1. Silent Migration for Existing Users (No Data Loss!)
+        let profiles = JSON.parse(localStorage.getItem('trackify_profiles'));
+        if (!profiles) {
+            let legacyQuota = parseInt(localStorage.getItem('leaveQuota')) || 18;
+            profiles = [
+                { id: 'default', name: 'My Attendance', quota: legacyQuota }
+            ];
+            localStorage.setItem('trackify_profiles', JSON.stringify(profiles));
+        }
+
+        let currentProfileId = localStorage.getItem('trackify_current_profile') || 'default';
+        
+        // Migrate legacy global attendance array to specific default profile if needed
+        let legacyData = localStorage.getItem('attendanceData');
+        if (legacyData && !localStorage.getItem('trackify_data_default')) {
+             localStorage.setItem('trackify_data_default', legacyData);
+             localStorage.removeItem('attendanceData'); // Clean up old data structure
+        }
+
+        // 2. Profile Accessors
+        function getActiveProfile() {
+            return profiles.find(p => p.id === currentProfileId) || profiles[0];
+        }
+
+        let attendanceData = JSON.parse(localStorage.getItem(`trackify_data_${currentProfileId}`)) || {};
+        let leaveQuota = getActiveProfile().quota || 18;
+        
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
+        const STATUS = {
+            NONE: 'none',
+            PRESENT: 'present',
+            LEAVE: 'leave',
+            HALF: 'half',
+            HOLIDAY: 'holiday'
+        };
+
+        const STATUS_FLOW = [STATUS.NONE, STATUS.PRESENT, STATUS.LEAVE, STATUS.HALF, STATUS.HOLIDAY];
+        
+        const STATUS_COLORS = {
+            [STATUS.NONE]: 'bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm',
+            [STATUS.PRESENT]: 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 border-none',
+            [STATUS.LEAVE]: 'bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-lg shadow-rose-500/30 border-none',
+            [STATUS.HALF]: 'bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-lg shadow-amber-500/30 border-none',
+            [STATUS.HOLIDAY]: 'bg-gradient-to-br from-blue-400 to-blue-600 text-white shadow-lg shadow-blue-500/30 border-none'
+        };
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            renderProfileSelector();
+            updateDashboard();
+            setupPWA();
+        });
+
+        // --- CLOUD ENGINE MODAL ROUTINES ---
+        function openAuthModal() {
+            document.getElementById('authModal').classList.remove('hidden');
+            document.getElementById('authModal').classList.add('flex'); // Keep it flex to center correctly
+            document.getElementById('authError').classList.add('hidden');
+            if(currentUser) {
+                document.getElementById('authTitle').innerText = "Account Dashboard";
+                document.getElementById('authForm').classList.add('hidden');
+                document.getElementById('authSignoutForm').classList.remove('hidden');
+                document.getElementById('userEmailDisplay').innerText = currentUser.email;
+            } else {
+                document.getElementById('authTitle').innerText = "Sync via Cloud Account";
+                document.getElementById('authForm').classList.remove('hidden');
+                document.getElementById('authSignoutForm').classList.add('hidden');
+            }
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeAuthModal() {
+            const modal = document.getElementById('authModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        // Automatic UI State Badge Swapper
+        function updateSyncBadgeStatus(status, label = '') {
+            const dot = document.getElementById('syncDot');
+            const text = document.getElementById('syncText');
+            if (!dot || !text) return;
+
+            if (status === 'synced') {
+                dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+                text.innerText = label || "Cloud: Backup Active";
+            } else if (status === 'loading') {
+                dot.className = "w-2 h-2 rounded-full bg-amber-500 animate-spin border-t border-transparent";
+                text.innerText = "Syncing...";
+            } else {
+                dot.className = "w-2 h-2 rounded-full bg-slate-400";
+                text.innerText = "Cloud: Offline Account";
+            }
+        }
+
+        // Unified Authentication Action Handler (Sign-In or Auto-Sign-Up)
+        async function handleAuthAction() {
+            const email = document.getElementById('authEmail').value.trim();
+            const password = document.getElementById('authPassword').value;
+            const errorEl = document.getElementById('authError');
+            
+            if(!email || !password) {
+                errorEl.innerText = "Please complete all fields.";
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            errorEl.classList.add('hidden');
+            updateSyncBadgeStatus('loading');
+
+            // Attempt Sign In using the supabaseClient variable we instantiated
+            let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            
+            // If user does not exist, automatically register them to keep onboarding frictionless
+            if (error && error.message.includes("Invalid login credentials")) {
+                ({ data, error } = await supabaseClient.auth.signUp({ email, password }));
+                if(!error) showToast("Account created successfully! Welcome to Trackify.");
+            }
+
+            if (error) {
+                errorEl.innerText = error.message;
+                errorEl.classList.remove('hidden');
+                updateSyncBadgeStatus('offline');
+            } else {
+                currentUser = data.user;
+                closeAuthModal();
+                await pullFromCloud(); // Pull backup immediately down upon verification
+            }
+        }
+
+        async function handleSignOut() {
+            await supabaseClient.auth.signOut();
+            currentUser = null;
+            updateSyncBadgeStatus('offline');
+            closeAuthModal();
+            showToast("Signed out. App will run in secure local-only storage.");
+        }
+
+        // Core Sync Engine: Package up multi-profile state data arrays and upload
+        async function pushToCloud() {
+            if (!currentUser) return;
+            updateSyncBadgeStatus('loading');
+
+            // Aggregate local storage attendance records across all profiles
+            const compiledAttendance = {};
+            profiles.forEach(p => {
+                compiledAttendance[p.id] = JSON.parse(localStorage.getItem(`trackify_data_${p.id}`)) || {};
+            });
+
+            const payload = {
+                user_id: currentUser.id,
+                profiles_data: profiles,
+                attendance_data: compiledAttendance,
+                updated_at: new Date().toISOString()
+            };
+
+            const { error } = await supabaseClient.from('user_backups').upsert(payload);
+            if (error) {
+                console.error("Cloud push failed:", error);
+                updateSyncBadgeStatus('synced', 'Cloud: Sync Interrupted');
+            } else {
+                updateSyncBadgeStatus('synced');
+            }
+        }
+
+        // Core Sync Engine: Pull data package from cloud down to device storage
+        async function pullFromCloud() {
+            if (!currentUser) return;
+            updateSyncBadgeStatus('loading');
+
+            const { data, error } = await supabaseClient.from('user_backups').select('*').maybeSingle();
+
+            if (error) {
+                console.error("Error connecting to cloud data:", error);
+                updateSyncBadgeStatus('offline');
+                return;
+            }
+
+            if (data) {
+                // Resolve conflicting backups by overwriting client storage with secure cloud records
+                profiles = data.profiles_data;
+                currentProfileId = profiles[0].id;
+                
+                localStorage.setItem('trackify_profiles', JSON.stringify(profiles));
+                localStorage.setItem('trackify_current_profile', currentProfileId);
+
+                Object.keys(data.attendance_data).forEach(profileId => {
+                    localStorage.setItem(`trackify_data_${profileId}`, JSON.stringify(data.attendance_data[profileId]));
+                });
+
+                // Hard refresh working states
+                attendanceData = JSON.parse(localStorage.getItem(`trackify_data_${currentProfileId}`)) || {};
+                leaveQuota = getActiveProfile().quota || 18;
+                
+                if(typeof renderProfileSelector === 'function') renderProfileSelector();
+                if(typeof switchProfile === 'function') switchProfile(currentProfileId);
+            }
+            updateSyncBadgeStatus('synced');
+        }
+
+        // Trigger Manual Sync Call
+        async function triggerManualSync() {
+            await pushToCloud();
+            closeAuthModal();
+            showToast("Data pushed to cloud successfully.");
+        }
+
+        // Hook session listener to maintain background persistence
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            if (session) {
+                currentUser = session.user;
+                pullFromCloud();
+            } else {
+                currentUser = null;
+                updateSyncBadgeStatus('offline');
+            }
+        });
+
+
+        // --- UI Utilities ---
+        function showToast(message, isError = false) {
+            let toast = document.getElementById('customToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'customToast';
+                document.body.appendChild(toast);
+            }
+            
+            toast.textContent = message;
+            toast.className = `fixed bottom-6 left-1/2 transform -translate-x-1/2 px-5 py-3 rounded-2xl text-white font-medium text-sm shadow-glass-dark z-[100] transition-opacity duration-300 pointer-events-none opacity-0 ${isError ? 'bg-rose-500' : 'bg-slate-800 dark:bg-slate-700'}`;
+
+            // Trigger reflow for animation
+            void toast.offsetWidth;
+            toast.classList.replace('opacity-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.replace('opacity-100', 'opacity-0');
+            }, 3000);
+        }
+
+        // --- Multi-Profile Logic ---
+        function renderProfileSelector() {
+            const select = document.getElementById('profileSelect');
+            if (!select) return;
+            select.innerHTML = profiles.map(p => `
+                <option value="${p.id}" ${p.id === currentProfileId ? 'selected' : ''} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">${p.name}</option>
+            `).join('');
+        }
+
+        function switchProfile(profileId) {
+            currentProfileId = profileId;
+            localStorage.setItem('trackify_current_profile', currentProfileId);
+            
+            attendanceData = JSON.parse(localStorage.getItem(`trackify_data_${currentProfileId}`)) || {};
+            const activeProfile = getActiveProfile();
+            leaveQuota = activeProfile.quota || 18;
+            
+            // Clear AI outputs on switch
+            document.getElementById('aiResponseContainer').classList.add('hidden');
+            
+            if (selectedMonth !== null) {
+                renderCalendar(selectedMonth);
+            }
+            updateDashboard();
+        }
+
+        function openNewProfileModal() {
+            // Because prompt() is native, we will use it for lightweight creation, 
+            // but we ensure we strictly replace all alerts with showToast() as instructed.
+            const name = prompt("Enter name for the new profile (e.g. Maid, Driver, Staff):");
+            if (!name || name.trim() === "") return;
+            
+            const newId = 'prof_' + Date.now();
+            profiles.push({ id: newId, name: name.trim(), quota: 18 });
+            
+            saveProfiles();
+            renderProfileSelector();
+            switchProfile(newId);
+            showToast(`Profile "${name}" created.`);
+        }
+
+        // --- Gemini AI Logic ✨ ---
+        async function callGemini(promptText, sysInstruction) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: promptText }] }],
+                systemInstruction: { parts: [{ text: sysInstruction }] }
+            };
+
+            const delays = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
+            let lastError;
+            
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                    
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text || "No content generated.";
+                } catch (err) {
+                    lastError = err;
+                    if (i < 4) await new Promise(r => setTimeout(r, delays[i]));
+                }
+            }
+            throw lastError || new Error("Failed after multiple attempts.");
+        }
+
+        async function generateInsights() {
+            const outBox = document.getElementById('aiResponseContainer');
+            const contentBox = document.getElementById('aiResponseContent');
+            outBox.classList.remove('hidden');
+            contentBox.innerHTML = '<div class="flex items-center gap-3 text-brand-600 dark:text-brand-400 font-medium"><div class="animate-spin h-5 w-5 border-2 border-brand-500 rounded-full border-t-transparent"></div> Analyzing attendance data...</div>';
+
+            // Gather summary for the prompt
+            let totals = { present: 0, leave: 0, half: 0, holiday: 0 };
+            for (const [dateStr, status] of Object.entries(attendanceData)) {
+                if (dateStr.startsWith(currentYear.toString())) {
+                    if (totals[status] !== undefined) totals[status]++;
+                }
+            }
+            const activeProfile = getActiveProfile();
+            const quota = activeProfile.quota || 18;
+
+            const sysPrompt = "You are an insightful HR assistant. Analyze the user's attendance. Keep it encouraging, professional, and strictly under 2 short paragraphs. Do not use Markdown formatting. Use simple HTML tags like <b> or <br> to emphasize key numbers or add line breaks. Do not include conversational filler at the start.";
+            const userPrompt = `Profile Name: ${activeProfile.name}. Year: ${currentYear}. Present days: ${totals.present}. Full Leaves taken: ${totals.leave}. Half days: ${totals.half}. Annual Leave Quota: ${quota}. Provide a brief analysis of their attendance trends and leave balance.`;
+
+            try {
+                const text = await callGemini(userPrompt, sysPrompt);
+                contentBox.innerHTML = text;
+            } catch (e) {
+                contentBox.innerHTML = `<span class="text-rose-500 font-medium">Sorry, unable to generate insights at this time. Please check your connection and try again.</span>`;
+            }
+        }
+
+        function openLeaveDrafter() {
+            document.getElementById('leaveDrafterModal').classList.add('active');
+            document.getElementById('leaveReasonInput').value = '';
+            document.getElementById('leaveEmailOutputContainer').classList.add('hidden');
+            document.getElementById('leaveDrafterError').classList.add('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLeaveDrafter() {
+            document.getElementById('leaveDrafterModal').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        async function generateLeaveEmail() {
+            const input = document.getElementById('leaveReasonInput').value;
+            const errorDiv = document.getElementById('leaveDrafterError');
+            const outputBox = document.getElementById('leaveEmailOutput');
+            const outputContainer = document.getElementById('leaveEmailOutputContainer');
+            const generateBtn = document.getElementById('btnGenerateEmail');
+
+            errorDiv.classList.add('hidden');
+            if (!input.trim()) {
+                errorDiv.innerText = "Please provide details/reason for your leave before generating.";
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            outputContainer.classList.remove('hidden');
+            outputBox.value = "Drafting email...\n\n✨ Please wait...";
+            generateBtn.disabled = true;
+            generateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            const activeProfile = getActiveProfile();
+            const sysPrompt = "You are a professional assistant. Draft a polite, concise leave request email based on the user's input. Provide ONLY the email text (with Subject line). Do not include any other conversational intro or outro.";
+            const userPrompt = `Employee Name: ${activeProfile.name}. Reason/Details for leave: ${input}.`;
+
+            try {
+                const text = await callGemini(userPrompt, sysPrompt);
+                outputBox.value = text;
+            } catch (e) {
+                errorDiv.innerText = "Failed to generate email. Please try again later.";
+                errorDiv.classList.remove('hidden');
+                outputContainer.classList.add('hidden');
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function copyLeaveEmail() {
+            const outputBox = document.getElementById('leaveEmailOutput');
+            outputBox.select();
+            document.execCommand('copy');
+            
+            const btn = document.getElementById('btnCopyEmail');
+            const oldText = btn.innerText;
+            btn.innerText = 'Copied!';
+            setTimeout(() => btn.innerText = oldText, 2000);
+        }
+
+        // --- Theming ---
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.classList.add('dark');
+            }
+            updateThemeIcons();
+        }
+
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            updateThemeIcons();
+        }
+
+        function updateThemeIcons() {
+            const isDark = document.documentElement.classList.contains('dark');
+            document.getElementById('moonIcon').classList.toggle('hidden', isDark);
+            document.getElementById('sunIcon').classList.toggle('hidden', !isDark);
+            if (document.getElementById('moonIconMobile')) {
+                document.getElementById('moonIconMobile').classList.toggle('hidden', isDark);
+                document.getElementById('sunIconMobile').classList.toggle('hidden', !isDark);
+            }
+        }
+
+        // --- Core Logic ---
+        function changeYear(delta) {
+            currentYear += delta;
+            document.getElementById('yearDisplay').innerText = currentYear;
+            updateDashboard();
+        }
+
+        function saveAttendanceData() {
+            localStorage.setItem(`trackify_data_${currentProfileId}`, JSON.stringify(attendanceData));
+            updateDashboard();
+            if (currentUser) pushToCloud();
+        }
+
+        function saveProfiles() {
+            localStorage.setItem('trackify_profiles', JSON.stringify(profiles));
+            localStorage.setItem('trackify_current_profile', currentProfileId);
+            if (currentUser) pushToCloud();
+        }
+
+        function getStatus(dateString) {
+            return attendanceData[dateString] || STATUS.NONE;
+        }
+
+        function cycleStatus(dateString, cellElement) {
+            const current = getStatus(dateString);
+            const currentIndex = STATUS_FLOW.indexOf(current);
+            const nextStatus = STATUS_FLOW[(currentIndex + 1) % STATUS_FLOW.length];
+            
+            if (nextStatus === STATUS.NONE) {
+                delete attendanceData[dateString];
+            } else {
+                attendanceData[dateString] = nextStatus;
+            }
+            
+            saveAttendanceData();
+            
+            const isWeekend = cellElement.dataset.weekend === 'true';
+            const isToday = cellElement.dataset.today === 'true';
+            
+            let extraClasses = '';
+            if (isWeekend && nextStatus === STATUS.NONE) {
+                extraClasses += ' opacity-60 bg-slate-50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-800/50 ';
+            }
+            if (isToday) {
+                extraClasses += ' ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-slate-900 z-10 ';
+            }
+            
+            cellElement.className = `day-cell aspect-square flex items-center justify-center rounded-2xl cursor-pointer select-none font-bold text-lg transition-all duration-200 ${STATUS_COLORS[nextStatus]} ${extraClasses} pop-anim`;
+            
+            setTimeout(() => {
+                cellElement.classList.remove('pop-anim');
+            }, 400);
+        }
+
+        // --- UI Rendering ---
+        function updateDashboard() {
+            renderMonthsGrid();
+            calculateGlobalStats();
+        }
+
+        function renderMonthsGrid() {
+            const grid = document.getElementById('monthsGrid');
+            grid.innerHTML = '';
+
+            monthNames.forEach((month, index) => {
+                const stats = getMonthStats(currentYear, index);
+                
+                const card = document.createElement('div');
+                card.className = `surface p-5 rounded-3xl border shadow-sm hover:shadow-lg dark:hover:shadow-glass-dark cursor-pointer hover:-translate-y-1.5 transition-all duration-300 fade-in-up group relative overflow-hidden`;
+                card.style.animationDelay = `${(index % 4) * 0.05}s`;
+                card.onclick = () => openModal(index);
+                
+                card.innerHTML = `
+                    <div class="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/50 dark:to-slate-800/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex justify-between items-center mb-5 relative z-10">
+                        <h3 class="text-xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">${month}</h3>
+                        <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-brand-50 dark:group-hover:bg-brand-900/40 group-hover:text-brand-500 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 text-xs font-bold relative z-10">
+                        <span class="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-500/20 flex-1 text-center">P: ${stats.present}</span>
+                        <span class="bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 px-2.5 py-1.5 rounded-lg border border-rose-100 dark:border-rose-500/20 flex-1 text-center">L: ${stats.leave}</span>
+                        ${stats.half > 0 ? `<span class="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 px-2.5 py-1.5 rounded-lg border border-amber-100 dark:border-amber-500/20 flex-1 text-center">H: ${stats.half}</span>` : ''}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function getMonthStats(year, monthIndex) {
+            let stats = { present: 0, leave: 0, half: 0, holiday: 0 };
+            const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+            
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                const status = getStatus(dateStr);
+                if (status !== STATUS.NONE) {
+                    stats[status]++;
+                }
+            }
+            return stats;
+        }
+
+        function calculateGlobalStats() {
+            let totals = { present: 0, leave: 0, half: 0, holiday: 0 };
+            
+            for (const [dateStr, status] of Object.entries(attendanceData)) {
+                if (dateStr.startsWith(currentYear.toString())) {
+                    if (totals[status] !== undefined) totals[status]++;
+                }
+            }
+
+            animateValue('statPresent', totals.present);
+            animateValue('statLeaves', totals.leave);
+            animateValue('statHalf', totals.half);
+            animateValue('statHoliday', totals.holiday);
+
+            const rateDenominator = totals.present + totals.leave + totals.half;
+            const rate = rateDenominator > 0 ? (totals.present / rateDenominator) * 100 : 0;
+            document.getElementById('attendanceRate').innerText = rate.toFixed(1) + '%';
+
+            const activeProfile = getActiveProfile();
+            document.getElementById('leaveQuotaInput').value = activeProfile.quota || 18;
+            document.getElementById('quotaUsedText').innerText = `${totals.leave} / ${activeProfile.quota}`;
+            
+            const progress = activeProfile.quota > 0 ? (totals.leave / activeProfile.quota) * 100 : 0;
+            const progressEl = document.getElementById('quotaProgress');
+            progressEl.style.width = `${Math.min(progress, 100)}%`;
+            
+            if (progress > 100) {
+                progressEl.className = 'h-full bg-gradient-to-r from-red-600 to-red-800 transition-all duration-700 ease-out rounded-full relative';
+            } else {
+                progressEl.className = 'h-full bg-gradient-to-r from-rose-400 to-rose-600 transition-all duration-700 ease-out rounded-full relative';
+            }
+        }
+
+        function animateValue(id, end) {
+            const obj = document.getElementById(id);
+            const start = parseInt(obj.innerText) || 0;
+            if (start === end) return;
+            
+            const duration = 600;
+            const startTime = performance.now();
+
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                const current = Math.round(start + (end - start) * easeProgress);
+                
+                obj.innerText = current;
+                
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+            requestAnimationFrame(update);
+        }
+
+        // --- Modal & Calendar Logic ---
+        function openModal(monthIndex) {
+            selectedMonth = monthIndex;
+            document.getElementById('modalTitle').innerText = `${monthNames[monthIndex]} ${currentYear}`;
+            renderCalendar(monthIndex);
+            
+            const modal = document.getElementById('calendarModal');
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden'; 
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('calendarModal');
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+            selectedMonth = null;
+        }
+
+        document.getElementById('calendarModal').addEventListener('click', (e) => {
+            if (e.target.id === 'calendarModal') closeModal();
+        });
+
+        document.getElementById('leaveDrafterModal').addEventListener('click', (e) => {
+            if (e.target.id === 'leaveDrafterModal') closeLeaveDrafter();
+        });
+
+        function renderCalendar(monthIndex) {
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+            
+            const firstDay = new Date(currentYear, monthIndex, 1).getDay();
+            const daysInMonth = new Date(currentYear, monthIndex + 1, 0).getDate();
+            
+            for (let i = 0; i < firstDay; i++) {
+                const empty = document.createElement('div');
+                grid.appendChild(empty);
+            }
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${currentYear}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const status = getStatus(dateStr);
+                
+                const cellDateObj = new Date(currentYear, monthIndex, day);
+                const isWeekend = cellDateObj.getDay() === 0 || cellDateObj.getDay() === 6;
+                const today = new Date();
+                const isToday = cellDateObj.getDate() === today.getDate() && cellDateObj.getMonth() === today.getMonth() && cellDateObj.getFullYear() === today.getFullYear();
+                
+                let extraClasses = '';
+                if (isWeekend && status === STATUS.NONE) {
+                    extraClasses += ' opacity-60 bg-slate-50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-800/50 ';
+                }
+                if (isToday) {
+                    extraClasses += ' ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-slate-900 z-10 ';
+                }
+
+                const cell = document.createElement('div');
+                cell.className = `day-cell aspect-square flex items-center justify-center rounded-2xl cursor-pointer select-none font-bold text-lg ${STATUS_COLORS[status]} ${extraClasses}`;
+                cell.innerText = day;
+                
+                cell.dataset.weekend = isWeekend;
+                cell.dataset.today = isToday;
+                
+                cell.style.animationDelay = `${(day % 15) * 0.02}s`;
+                cell.classList.add('fade-in-up');
+                
+                setTimeout(() => cell.classList.remove('fade-in-up'), 500);
+
+                cell.onclick = () => cycleStatus(dateStr, cell);
+                
+                grid.appendChild(cell);
+            }
+        }
+
+        // --- Quota, Quick Fill, Import/Export, Feedback ---
+        function updateQuota(val) {
+            const activeProfile = getActiveProfile();
+            activeProfile.quota = parseInt(val) || 0;
+            leaveQuota = activeProfile.quota;
+            saveProfiles();
+            calculateGlobalStats();
+        }
+
+        function quickFillMonth() {
+            if (selectedMonth === null) return;
+            const daysInMonth = new Date(currentYear, selectedMonth + 1, 0).getDate();
+            let updated = false;
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateObj = new Date(currentYear, selectedMonth, day);
+                const dayOfWeek = dateObj.getDay();
+                
+                if (dayOfWeek > 0 && dayOfWeek < 6) { 
+                    const dateStr = `${currentYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    if (getStatus(dateStr) === STATUS.NONE) {
+                        attendanceData[dateStr] = STATUS.PRESENT;
+                        updated = true;
+                    }
+                }
+            }
+            
+            if (updated) {
+                saveAttendanceData();
+                renderCalendar(selectedMonth);
+            }
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(attendanceData, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `trackify_backup_${getActiveProfile().name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (typeof importedData === 'object' && importedData !== null) {
+                        attendanceData = { ...attendanceData, ...importedData };
+                        saveAttendanceData();
+                        showToast(`Data imported successfully into profile: ${getActiveProfile().name}!`);
+                    } else {
+                        showToast("Invalid data format in file.", true);
+                    }
+                } catch (err) {
+                    showToast("Failed to parse JSON file.", true);
+                }
+                event.target.value = ''; 
+            };
+            reader.readAsText(file);
+        }
+        
+        function openFeedbackModal() {
+            const subject = encodeURIComponent("Trackify PWA - Bug Report / Feature Request");
+            const body = encodeURIComponent("Please describe your feedback, feature request, or the bug you found:\n\n");
+            window.location.href = `mailto:hello@example.com?subject=${subject}&body=${body}`;
+        }
+
+        // --- PWA Setup ---
+        function setupPWA() {
+            try {
+                const manifest = {
+                    name: "Trackify Attendance",
+                    short_name: "Trackify",
+                    description: "A premium PWA to track your attendance and leaves.",
+                    start_url: location.href,
+                    display: "standalone",
+                    background_color: "#0f172a",
+                    theme_color: "#6366f1",
+                    icons: [
+                        {
+                            src: "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='4' rx='2' ry='2'/%3E%3Cline x1='16' x2='16' y1='2' y2='6'/%3E%3Cline x1='8' x2='8' y1='2' y2='6'/%3E%3Cline x1='3' x2='21' y1='10' y2='10'/%3E%3Cpath d='M8 14h.01'/%3E%3Cpath d='M12 14h.01'/%3E%3Cpath d='M16 14h.01'/%3E%3Cpath d='M8 18h.01'/%3E%3Cpath d='M12 18h.01'/%3E%3Cpath d='M16 18h.01'/%3E%3C/svg%3E",
+                            sizes: "192x192",
+                            type: "image/svg+xml"
+                        }
+                    ]
+                };
+
+                const manifestString = JSON.stringify(manifest);
+                const manifestUri = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(manifestString);
+                
+                const link = document.createElement('link');
+                link.rel = 'manifest';
+                link.href = manifestUri;
+                document.head.appendChild(link);
+
+                if ('serviceWorker' in navigator) {
+                    const swCode = `
+                        const CACHE_NAME = 'trackify-cache-v4';
+                        const ASSETS = [
+                            '${location.href.split('?')[0].split('#')[0]}',
+                            'https://cdn.tailwindcss.com',
+                            'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
+                        ];
+                        
+                        self.addEventListener('install', event => {
+                            event.waitUntil(
+                                caches.open(CACHE_NAME)
+                                    .then(cache => cache.addAll(ASSETS))
+                                    .then(() => self.skipWaiting())
+                            );
+                        });
+                        
+                        self.addEventListener('activate', event => {
+                            event.waitUntil(self.clients.claim());
+                        });
+                        
+                        self.addEventListener('fetch', event => {
+                            event.respondWith(
+                                caches.match(event.request).then(response => {
+                                    return response || fetch(event.request);
+                                }).catch(() => {
+                                    console.log('Resource unavailable offline:', event.request.url);
+                                })
+                            );
+                        });
+                    `;
+                    
+                    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                    const swUrl = URL.createObjectURL(swBlob);
+                    
+                    navigator.serviceWorker.register(swUrl).then(() => {
+                        console.log('PWA ServiceWorker registered successfully');
+                    }).catch(err => {
+                        console.log('PWA SW registration failed', err);
+                    });
+                }
+            } catch (e) {
+                console.error("PWA setup bypassed.", e);
+            }
+        }
+    </script>
+</body>
+</html>

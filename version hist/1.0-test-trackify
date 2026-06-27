@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Attendance Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 900: '#312e81'
+                        },
+                        present: '#059669', // Emerald 600
+                        leave: '#e11d48',   // Rose 600
+                        half: '#d97706',    // Amber 600
+                        holiday: '#2563eb', // Blue 600
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.05)',
+                        'glass-dark': '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Refined CSS Variables for Professional Theming */
+        :root {
+            --bg-color: #f8fafc; /* slate-50 */
+            --surface-color: #ffffff;
+            --border-color: #e2e8f0; /* slate-200 */
+            --text-main: #0f172a; /* slate-900 */
+            --text-muted: #64748b; /* slate-500 */
+        }
+        
+        .dark {
+            --bg-color: #0f172a; /* slate-900 */
+            --surface-color: #1e293b; /* slate-800 */
+            --border-color: #334155; /* slate-700 */
+            --text-main: #f8fafc; /* slate-50 */
+            --text-muted: #94a3b8; /* slate-400 */
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.4s ease, color 0.4s ease;
+            background-image: radial-gradient(circle at top right, rgba(99, 102, 241, 0.03) 0%, transparent 40%),
+                              radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.03) 0%, transparent 40%);
+        }
+
+        .dark body {
+            background-image: radial-gradient(circle at top right, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+                              radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05) 0%, transparent 40%);
+        }
+
+        .surface {
+            background-color: var(--surface-color);
+            border-color: var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        /* Premium Micro-Animations */
+        .pop-anim {
+            animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.12); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
+            100% { transform: scale(1); }
+        }
+
+        .fade-in-up {
+            opacity: 0;
+            animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Glassmorphism Modal */
+        .modal-overlay {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .modal-overlay.active .modal-content {
+            transform: translateY(0);
+        }
+        
+        /* Elegant Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        .day-cell {
+            transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .day-cell:active {
+            transform: scale(0.92);
+        }
+
+        /* Background blur utilities */
+        .glass-header {
+            background-color: rgba(var(--surface-color-rgb), 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen pb-20 selection:bg-brand-500 selection:text-white">
+
+    <header class="sticky top-0 z-40 border-b border-gray-200/80 dark:border-gray-800/80 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl shadow-sm transition-colors duration-300">
+        <div class="max-w-5xl mx-auto flex justify-between items-center p-4">
+            <h1 class="text-xl md:text-2xl font-bold flex items-center gap-2 tracking-tight">
+                <div class="bg-gradient-to-br from-brand-500 to-indigo-600 p-1.5 rounded-lg shadow-lg shadow-brand-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                </div>
+                <span class="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-300">Trackify</span>
+            </h1>
+            
+            <div class="flex items-center gap-2 md:gap-4">
+                <button id="cloudSyncBtn" onclick="openAuthModal()" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 shadow-sm hover:scale-105">
+                    <span id="syncDot" class="w-2 h-2 rounded-full bg-gray-400"></span>
+                    <span id="syncText" class="hidden sm:inline">Cloud: Offline</span>
+                </button>
+
+                <div class="flex items-center bg-slate-100/80 dark:bg-slate-800/80 rounded-xl p-1 border border-slate-200/50 dark:border-slate-700/50 shadow-inner">
+                    <button onclick="changeYear(-1)" class="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    <span id="yearDisplay" class="font-bold px-3 w-16 text-center tracking-wide">2026</span>
+                    <button onclick="changeYear(1)" class="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+
+                <button onclick="toggleTheme()" class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-300 transition shadow-sm" aria-label="Toggle theme">
+                    <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto p-4 mt-6">
+        
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.1s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-emerald-500 to-emerald-700 tracking-tight" id="statPresent">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Present</span>
+            </div>
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.2s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl group-hover:bg-rose-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-rose-500 to-rose-700 tracking-tight" id="statLeaves">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Leaves</span>
+            </div>
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.3s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-amber-500 to-amber-700 tracking-tight" id="statHalf">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Half Days</span>
+            </div>
+            <div class="surface relative overflow-hidden p-5 rounded-3xl border shadow-glass dark:shadow-glass-dark flex flex-col justify-center items-center text-center fade-in-up group" style="animation-delay: 0.4s;">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all"></div>
+                <span class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-blue-500 to-blue-700 tracking-tight" id="statHoliday">0</span>
+                <span class="text-xs uppercase tracking-wider text-slate-500 font-semibold mt-2">Holidays</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+            <div class="surface relative overflow-hidden p-6 rounded-3xl border shadow-glass dark:shadow-glass-dark flex items-center justify-between fade-in-up" style="animation-delay: 0.5s;">
+                <div class="absolute -left-10 -bottom-10 w-32 h-32 bg-brand-500/10 rounded-full blur-3xl"></div>
+                <div class="relative z-10">
+                    <h3 class="text-slate-500 dark:text-slate-400 font-semibold text-xs uppercase tracking-wider">Attendance Rate</h3>
+                    <div class="text-3xl font-extrabold mt-1 text-slate-800 dark:text-white" id="attendanceRate">0%</div>
+                </div>
+                <div class="relative z-10 w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-50 to-indigo-100 dark:from-brand-900/40 dark:to-indigo-800/40 border border-brand-100 dark:border-brand-800/50 flex items-center justify-center text-brand-600 dark:text-brand-400 shadow-inner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+            </div>
+            <div class="surface relative overflow-hidden p-6 rounded-3xl border shadow-glass dark:shadow-glass-dark fade-in-up flex flex-col justify-center" style="animation-delay: 0.6s;">
+                <div class="flex justify-between items-end mb-3 relative z-10">
+                    <div>
+                        <h3 class="text-slate-500 dark:text-slate-400 font-semibold text-xs uppercase tracking-wider">Leave Quota</h3>
+                        <div class="text-sm font-bold mt-1 text-slate-800 dark:text-white">Used: <span id="quotaUsedText" class="text-rose-500">0 / 18</span></div>
+                    </div>
+                    <div class="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <label class="text-xs text-slate-500 font-medium pl-1">Max:</label>
+                        <input type="number" id="leaveQuotaInput" onchange="updateQuota(this.value)" class="w-12 py-0.5 text-sm font-bold rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:ring-2 focus:ring-brand-500 text-center transition shadow-sm" min="0">
+                    </div>
+                </div>
+                <div class="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden relative z-10 shadow-inner">
+                    <div id="quotaProgress" class="h-full bg-gradient-to-r from-rose-400 to-rose-600 transition-all duration-700 ease-out rounded-full relative" style="width: 0%">
+                        <div class="absolute inset-0 bg-white/20 w-full animate-pulse"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 mb-6 fade-in-up" style="animation-delay: 0.7s;">
+            <h2 class="text-lg font-bold text-slate-800 dark:text-white">Monthly Breakdown</h2>
+            <div class="h-px bg-slate-200 dark:bg-slate-800 flex-grow"></div>
+        </div>
+        <div id="monthsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            </div>
+
+        <div class="mt-16 mb-8 p-6 rounded-3xl surface border shadow-glass dark:shadow-glass-dark fade-in-up" style="animation-delay: 0.8s;">
+            <h3 class="text-sm font-bold mb-4 uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x1="12" y1="3" y2="15"/></svg>
+                Data Management
+            </h3>
+            <div class="flex flex-wrap gap-4">
+                <button onclick="exportData()" class="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-sm hover:shadow border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-brand-500 group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x1="12" y1="15" y2="3"/></svg>
+                    Export JSON
+                </button>
+                <label class="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-5 py-2.5 rounded-xl font-semibold text-sm cursor-pointer transition-all shadow-sm hover:shadow border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500 group-hover:translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x1="12" y1="3" y2="15"/></svg>
+                    Import JSON
+                    <input type="file" accept=".json" class="hidden" onchange="importData(event)">
+                </label>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="calendarModal" class="modal-overlay fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 dark:bg-black/60">
+        <div class="modal-content surface w-full max-w-lg h-[85vh] sm:h-auto sm:max-h-[90vh] sm:rounded-3xl rounded-t-3xl flex flex-col shadow-2xl border border-white/20 dark:border-slate-700/50 relative overflow-hidden">
+            
+            <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-20 sm:rounded-t-3xl rounded-t-3xl">
+                <h2 id="modalTitle" class="text-2xl font-extrabold tracking-tight">Month Year</h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="quickFillMonth()" title="Quick Fill Weekdays" class="px-3 py-1.5 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 border border-amber-200 dark:border-amber-500/20 rounded-xl transition-all flex items-center gap-1.5 text-sm font-bold shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Fill Days
+                    </button>
+                    <button onclick="closeModal()" class="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-5 overflow-y-auto flex-grow bg-slate-50/50 dark:bg-slate-900/30">
+                <div class="flex flex-wrap justify-center gap-4 mb-6 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300">
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-sm shadow-emerald-500/50"></div> Present</div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-rose-400 to-rose-600 shadow-sm shadow-rose-500/50"></div> Leave</div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-sm shadow-amber-500/50"></div> Half-Day</div>
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 shadow-sm shadow-blue-500/50"></div> Holiday</div>
+                </div>
+
+                <div class="grid grid-cols-7 gap-2 text-center font-bold text-slate-400 dark:text-slate-500 text-xs sm:text-sm mb-3 uppercase tracking-wider">
+                    <div class="text-rose-400 dark:text-rose-500/70">Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div class="text-rose-400 dark:text-rose-500/70">Sat</div>
+                </div>
+
+                <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-sm sm:text-base">
+                    </div>
+            </div>
+            
+            <div class="p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 sm:rounded-b-3xl flex justify-center items-center text-xs font-medium text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
+                Tap a day to cycle its status
+            </div>
+        </div>
+    </div>
+
+    <div id="authModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/60">
+        <div class="surface border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl relative overflow-hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight" id="authTitle">Sync via Cloud Account</h3>
+                <button onclick="closeAuthModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
+            </div>
+            
+            <div id="authForm" class="space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Email Address</label>
+                    <input type="email" id="authEmail" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-brand-500" placeholder="name@domain.com">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Password</label>
+                    <input type="password" id="authPassword" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-brand-500" placeholder="••••••••">
+                </div>
+                
+                <button onclick="handleAuthAction()" id="primaryAuthBtn" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-2.5 rounded-xl transition-all mt-2 shadow-lg shadow-brand-500/20 active:scale-95">
+                    Log In / Create Account
+                </button>
+                
+                <p id="authError" class="text-xs text-leave text-center hidden font-semibold mt-2"></p>
+            </div>
+
+            <div id="authSignoutForm" class="hidden text-center space-y-4 py-2">
+                <p class="text-sm text-slate-600 dark:text-slate-400">Logged in securely as: <br><span id="userEmailDisplay" class="font-bold text-slate-800 dark:text-slate-100"></span></p>
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="triggerManualSync()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold py-2.5 rounded-xl transition-all shadow-md shadow-brand-500/10">Force Sync</button>
+                    <button onclick="handleSignOut()" class="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-leave text-xs font-bold py-2.5 rounded-xl transition-all">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE CLOUD SYNC CONFIGURATION ---
+        // TODO: Replace with your actual credentials from Project Settings -> API in your Supabase dashboard
+        const SUPABASE_URL = "https://your-project-id.supabase.co"; 
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."; 
+
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
+
+        // --- State Management ---
+        let currentYear = 2026;
+        let selectedMonth = null;
+        let attendanceData = JSON.parse(localStorage.getItem('attendanceData')) || {};
+        let leaveQuota = parseInt(localStorage.getItem('leaveQuota')) || 18;
+        
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
+        const STATUS = {
+            NONE: 'none',
+            PRESENT: 'present',
+            LEAVE: 'leave',
+            HALF: 'half',
+            HOLIDAY: 'holiday'
+        };
+
+        const STATUS_FLOW = [STATUS.NONE, STATUS.PRESENT, STATUS.LEAVE, STATUS.HALF, STATUS.HOLIDAY];
+        
+        // Upgraded Premium Colors using gradients and glowing shadows
+        const STATUS_COLORS = {
+            [STATUS.NONE]: 'bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm',
+            [STATUS.PRESENT]: 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 border-none',
+            [STATUS.LEAVE]: 'bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-lg shadow-rose-500/30 border-none',
+            [STATUS.HALF]: 'bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-lg shadow-amber-500/30 border-none',
+            [STATUS.HOLIDAY]: 'bg-gradient-to-br from-blue-400 to-blue-600 text-white shadow-lg shadow-blue-500/30 border-none'
+        };
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            updateDashboard();
+            setupPWA();
+        });
+
+        // --- Theming ---
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.classList.add('dark');
+            }
+            updateThemeIcons();
+        }
+
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            updateThemeIcons();
+        }
+
+        function updateThemeIcons() {
+            const isDark = document.documentElement.classList.contains('dark');
+            document.getElementById('moonIcon').classList.toggle('hidden', isDark);
+            document.getElementById('sunIcon').classList.toggle('hidden', !isDark);
+        }
+
+        // --- Core Logic ---
+        function changeYear(delta) {
+            currentYear += delta;
+            document.getElementById('yearDisplay').innerText = currentYear;
+            updateDashboard();
+        }
+
+        function saveData() {
+            localStorage.setItem('attendanceData', JSON.stringify(attendanceData));
+            updateDashboard();
+            if (currentUser) pushToCloud();
+        }
+
+        function getStatus(dateString) {
+            return attendanceData[dateString] || STATUS.NONE;
+        }
+
+        function cycleStatus(dateString, cellElement) {
+            const current = getStatus(dateString);
+            const currentIndex = STATUS_FLOW.indexOf(current);
+            const nextStatus = STATUS_FLOW[(currentIndex + 1) % STATUS_FLOW.length];
+            
+            if (nextStatus === STATUS.NONE) {
+                delete attendanceData[dateString];
+            } else {
+                attendanceData[dateString] = nextStatus;
+            }
+            
+            saveData();
+            
+            // Extract base classes that we need to keep
+            const isWeekend = cellElement.dataset.weekend === 'true';
+            const isToday = cellElement.dataset.today === 'true';
+            
+            let extraClasses = '';
+            if (isWeekend && nextStatus === STATUS.NONE) {
+                extraClasses += ' opacity-60 bg-slate-50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-800/50 ';
+            }
+            if (isToday) {
+                extraClasses += ' ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-slate-900 z-10 ';
+            }
+            
+            // Micro-animation & UI Update
+            cellElement.className = `day-cell aspect-square flex items-center justify-center rounded-2xl cursor-pointer select-none font-bold text-lg transition-all duration-200 ${STATUS_COLORS[nextStatus]} ${extraClasses} pop-anim`;
+            
+            // Remove animation class after it plays to allow re-triggering
+            setTimeout(() => {
+                cellElement.classList.remove('pop-anim');
+            }, 400);
+        }
+
+        // --- UI Rendering ---
+        function updateDashboard() {
+            renderMonthsGrid();
+            calculateGlobalStats();
+        }
+
+        function renderMonthsGrid() {
+            const grid = document.getElementById('monthsGrid');
+            grid.innerHTML = '';
+
+            monthNames.forEach((month, index) => {
+                const stats = getMonthStats(currentYear, index);
+                
+                const card = document.createElement('div');
+                card.className = `surface p-5 rounded-3xl border shadow-sm hover:shadow-lg dark:hover:shadow-glass-dark cursor-pointer hover:-translate-y-1.5 transition-all duration-300 fade-in-up group relative overflow-hidden`;
+                card.style.animationDelay = `${(index % 4) * 0.05}s`;
+                card.onclick = () => openModal(index);
+                
+                card.innerHTML = `
+                    <div class="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/50 dark:to-slate-800/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="flex justify-between items-center mb-5 relative z-10">
+                        <h3 class="text-xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">${month}</h3>
+                        <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-brand-50 dark:group-hover:bg-brand-900/40 group-hover:text-brand-500 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 text-xs font-bold relative z-10">
+                        <span class="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-500/20 flex-1 text-center">P: ${stats.present}</span>
+                        <span class="bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 px-2.5 py-1.5 rounded-lg border border-rose-100 dark:border-rose-500/20 flex-1 text-center">L: ${stats.leave}</span>
+                        ${stats.half > 0 ? `<span class="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 px-2.5 py-1.5 rounded-lg border border-amber-100 dark:border-amber-500/20 flex-1 text-center">H: ${stats.half}</span>` : ''}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function getMonthStats(year, monthIndex) {
+            let stats = { present: 0, leave: 0, half: 0, holiday: 0 };
+            const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+            
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                const status = getStatus(dateStr);
+                if (status !== STATUS.NONE) {
+                    stats[status]++;
+                }
+            }
+            return stats;
+        }
+
+        function calculateGlobalStats() {
+            let totals = { present: 0, leave: 0, half: 0, holiday: 0 };
+            
+            for (const [dateStr, status] of Object.entries(attendanceData)) {
+                if (dateStr.startsWith(currentYear.toString())) {
+                    if (totals[status] !== undefined) totals[status]++;
+                }
+            }
+
+            animateValue('statPresent', totals.present);
+            animateValue('statLeaves', totals.leave);
+            animateValue('statHalf', totals.half);
+            animateValue('statHoliday', totals.holiday);
+
+            // Calculate Attendance Rate
+            const rateDenominator = totals.present + totals.leave + totals.half;
+            const rate = rateDenominator > 0 ? (totals.present / rateDenominator) * 100 : 0;
+            document.getElementById('attendanceRate').innerText = rate.toFixed(1) + '%';
+
+            // Calculate Leave Quota Progress
+            document.getElementById('leaveQuotaInput').value = leaveQuota;
+            document.getElementById('quotaUsedText').innerText = `${totals.leave} / ${leaveQuota}`;
+            const progress = leaveQuota > 0 ? (totals.leave / leaveQuota) * 100 : 0;
+            const progressEl = document.getElementById('quotaProgress');
+            progressEl.style.width = `${Math.min(progress, 100)}%`;
+            
+            if (progress > 100) {
+                progressEl.className = 'h-full bg-gradient-to-r from-red-600 to-red-800 transition-all duration-700 ease-out rounded-full relative';
+            } else {
+                progressEl.className = 'h-full bg-gradient-to-r from-rose-400 to-rose-600 transition-all duration-700 ease-out rounded-full relative';
+            }
+        }
+
+        function animateValue(id, end) {
+            const obj = document.getElementById(id);
+            const start = parseInt(obj.innerText) || 0;
+            if (start === end) return;
+            
+            const duration = 600;
+            const startTime = performance.now();
+
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Ease out Expo
+                const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                const current = Math.round(start + (end - start) * easeProgress);
+                
+                obj.innerText = current;
+                
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+            requestAnimationFrame(update);
+        }
+
+        // --- Modal & Calendar Logic ---
+        function openModal(monthIndex) {
+            selectedMonth = monthIndex;
+            document.getElementById('modalTitle').innerText = `${monthNames[monthIndex]} ${currentYear}`;
+            renderCalendar(monthIndex);
+            
+            const modal = document.getElementById('calendarModal');
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden'; 
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('calendarModal');
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+            selectedMonth = null;
+        }
+
+        document.getElementById('calendarModal').addEventListener('click', (e) => {
+            if (e.target.id === 'calendarModal') closeModal();
+        });
+
+        function renderCalendar(monthIndex) {
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+            
+            const firstDay = new Date(currentYear, monthIndex, 1).getDay();
+            const daysInMonth = new Date(currentYear, monthIndex + 1, 0).getDate();
+            
+            // Empty slots
+            for (let i = 0; i < firstDay; i++) {
+                const empty = document.createElement('div');
+                grid.appendChild(empty);
+            }
+            
+            // Actual days
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${currentYear}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const status = getStatus(dateStr);
+                
+                const cellDateObj = new Date(currentYear, monthIndex, day);
+                const isWeekend = cellDateObj.getDay() === 0 || cellDateObj.getDay() === 6;
+                const today = new Date();
+                const isToday = cellDateObj.getDate() === today.getDate() && cellDateObj.getMonth() === today.getMonth() && cellDateObj.getFullYear() === today.getFullYear();
+                
+                let extraClasses = '';
+                if (isWeekend && status === STATUS.NONE) {
+                    extraClasses += ' opacity-60 bg-slate-50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-800/50 ';
+                }
+                if (isToday) {
+                    extraClasses += ' ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-slate-900 z-10 ';
+                }
+
+                const cell = document.createElement('div');
+                cell.className = `day-cell aspect-square flex items-center justify-center rounded-2xl cursor-pointer select-none font-bold text-lg ${STATUS_COLORS[status]} ${extraClasses}`;
+                cell.innerText = day;
+                
+                // Store dataset for reference during click updates
+                cell.dataset.weekend = isWeekend;
+                cell.dataset.today = isToday;
+                
+                cell.style.animationDelay = `${(day % 15) * 0.02}s`;
+                cell.classList.add('fade-in-up');
+                
+                setTimeout(() => cell.classList.remove('fade-in-up'), 500);
+
+                cell.onclick = () => cycleStatus(dateStr, cell);
+                
+                grid.appendChild(cell);
+            }
+        }
+
+        // --- New Features (Quota, Quick Fill, Import/Export) ---
+        function updateQuota(val) {
+            leaveQuota = parseInt(val) || 0;
+            localStorage.setItem('leaveQuota', leaveQuota);
+            calculateGlobalStats();
+        }
+
+        function quickFillMonth() {
+            if (selectedMonth === null) return;
+            const daysInMonth = new Date(currentYear, selectedMonth + 1, 0).getDate();
+            let updated = false;
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateObj = new Date(currentYear, selectedMonth, day);
+                const dayOfWeek = dateObj.getDay();
+                
+                if (dayOfWeek > 0 && dayOfWeek < 6) { 
+                    const dateStr = `${currentYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    if (getStatus(dateStr) === STATUS.NONE) {
+                        attendanceData[dateStr] = STATUS.PRESENT;
+                        updated = true;
+                    }
+                }
+            }
+            
+            if (updated) {
+                saveData();
+                renderCalendar(selectedMonth);
+            }
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(attendanceData, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `trackify_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (typeof importedData === 'object' && importedData !== null) {
+                        attendanceData = { ...attendanceData, ...importedData };
+                        saveData();
+                        alert("Data imported successfully!");
+                    } else {
+                        alert("Invalid data format in file.");
+                    }
+                } catch (err) {
+                    alert("Failed to parse JSON file.");
+                }
+                event.target.value = ''; 
+            };
+            reader.readAsText(file);
+        }
+
+        // --- CLOUD ENGINE MODAL & SYNC ROUTINES ---
+        function openAuthModal() {
+            const modal = document.getElementById('authModal');
+            modal.classList.remove('hidden');
+            document.getElementById('authError').classList.add('hidden');
+            if(currentUser) {
+                document.getElementById('authTitle').innerText = "Account Dashboard";
+                document.getElementById('authForm').classList.add('hidden');
+                document.getElementById('authSignoutForm').classList.remove('hidden');
+                document.getElementById('userEmailDisplay').innerText = currentUser.email;
+            } else {
+                document.getElementById('authTitle').innerText = "Sync via Cloud Account";
+                document.getElementById('authForm').classList.remove('hidden');
+                document.getElementById('authSignoutForm').classList.add('hidden');
+            }
+        }
+
+        function closeAuthModal() {
+            document.getElementById('authModal').classList.add('hidden');
+        }
+
+        function updateSyncBadgeStatus(status, label = '') {
+            const dot = document.getElementById('syncDot');
+            const text = document.getElementById('syncText');
+            if (!dot || !text) return;
+
+            if (status === 'synced') {
+                dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+                text.innerText = label || "Cloud: Backup Active";
+            } else if (status === 'loading') {
+                dot.className = "w-2 h-2 rounded-full bg-amber-500 animate-spin border-t border-transparent";
+                text.innerText = "Syncing...";
+            } else {
+                dot.className = "w-2 h-2 rounded-full bg-slate-400";
+                text.innerText = "Cloud: Offline";
+            }
+        }
+
+        async function handleAuthAction() {
+            const email = document.getElementById('authEmail').value.trim();
+            const password = document.getElementById('authPassword').value;
+            const errorEl = document.getElementById('authError');
+            
+            if(!email || !password) {
+                errorEl.innerText = "Please complete all fields.";
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            errorEl.classList.add('hidden');
+            updateSyncBadgeStatus('loading');
+
+            let { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            
+            if (error && error.message.includes("Invalid login credentials")) {
+                ({ data, error } = await supabase.auth.signUp({ email, password }));
+                if(!error) alert("Account created successfully! Welcome to Trackify.");
+            }
+
+            if (error) {
+                errorEl.innerText = error.message;
+                errorEl.classList.remove('hidden');
+                updateSyncBadgeStatus('offline');
+            } else {
+                currentUser = data.user;
+                closeAuthModal();
+                await pullFromCloud();
+            }
+        }
+
+        async function handleSignOut() {
+            await supabase.auth.signOut();
+            currentUser = null;
+            updateSyncBadgeStatus('offline');
+            closeAuthModal();
+            alert("Signed out. App will run in secure local-only storage.");
+        }
+
+        async function pushToCloud() {
+            if (!currentUser) return;
+            updateSyncBadgeStatus('loading');
+
+            const payload = {
+                user_id: currentUser.id,
+                profiles_data: [], // Structural placeholder matching layout criteria
+                attendance_data: attendanceData,
+                updated_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase.from('user_backups').upsert(payload);
+            if (error) {
+                console.error("Cloud push failed:", error);
+                updateSyncBadgeStatus('synced', 'Cloud: Sync Interrupted');
+            } else {
+                updateSyncBadgeStatus('synced');
+            }
+        }
+
+        async function pullFromCloud() {
+            if (!currentUser) return;
+            updateSyncBadgeStatus('loading');
+
+            const { data, error } = await supabase.from('user_backups').select('*').maybeSingle();
+
+            if (error) {
+                console.error("Error connecting to cloud data:", error);
+                updateSyncBadgeStatus('offline');
+                return;
+            }
+
+            if (data && data.attendance_data) {
+                attendanceData = data.attendance_data;
+                localStorage.setItem('attendanceData', JSON.stringify(attendanceData));
+                updateDashboard();
+                if (selectedMonth !== null) renderCalendar(selectedMonth);
+            }
+            updateSyncBadgeStatus('synced');
+        }
+
+        async function triggerManualSync() {
+            await pushToCloud();
+            closeAuthModal();
+        }
+
+        supabase.auth.onAuthStateChange((event, session) => {
+            if (session) {
+                currentUser = session.user;
+                pullFromCloud();
+            } else {
+                currentUser = null;
+                updateSyncBadgeStatus('offline');
+            }
+        });
+
+        // --- PWA Setup ---
+        function setupPWA() {
+            try {
+                const manifest = {
+                    name: "Trackify Attendance",
+                    short_name: "Trackify",
+                    description: "A premium PWA to track your attendance and leaves.",
+                    start_url: location.href,
+                    display: "standalone",
+                    background_color: "#0f172a",
+                    theme_color: "#6366f1",
+                    icons: [
+                        {
+                            src: "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='4' rx='2' ry='2'/%3E%3Cline x1='16' x2='16' y1='2' y2='6'/%3E%3Cline x1='8' x2='8' y1='2' y2='6'/%3E%3Cline x1='3' x2='21' y1='10' y2='10'/%3E%3Cpath d='M8 14h.01'/%3E%3Cpath d='M12 14h.01'/%3E%3Cpath d='M16 14h.01'/%3E%3Cpath d='M8 18h.01'/%3E%3Cpath d='M12 18h.01'/%3E%3Cpath d='M16 18h.01'/%3E%3C/svg%3E",
+                            sizes: "192x192",
+                            type: "image/svg+xml"
+                        }
+                    ]
+                };
+
+                const manifestString = JSON.stringify(manifest);
+                const manifestUri = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(manifestString);
+                
+                const link = document.createElement('link');
+                link.rel = 'manifest';
+                link.href = manifestUri;
+                document.head.appendChild(link);
+
+                if ('serviceWorker' in navigator) {
+                    const swCode = `
+                        const CACHE_NAME = 'trackify-cache-v3';
+                        const ASSETS = [
+                            '${location.href.split('?')[0].split('#')[0]}',
+                            'https://cdn.tailwindcss.com',
+                            'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
+                        ];
+                        
+                        self.addEventListener('install', event => {
+                            event.waitUntil(
+                                caches.open(CACHE_NAME)
+                                    .then(cache => cache.addAll(ASSETS))
+                                    .then(() => self.skipWaiting())
+                            );
+                        });
+                        
+                        self.addEventListener('activate', event => {
+                            event.waitUntil(self.clients.claim());
+                        });
+                        
+                        self.addEventListener('fetch', event => {
+                            event.respondWith(
+                                caches.match(event.request).then(response => {
+                                    return response || fetch(event.request);
+                                }).catch(() => {
+                                    console.log('Resource unavailable offline:', event.request.url);
+                                })
+                            );
+                        });
+                    `;
+                    
+                    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                    const swUrl = URL.createObjectURL(swBlob);
+                    
+                    navigator.serviceWorker.register(swUrl).then(() => {
+                        console.log('PWA ServiceWorker registered successfully');
+                    }).catch(err => {
+                        console.log('PWA SW registration failed', err);
+                    });
+                }
+            } catch (e) {
+                console.error("PWA setup bypassed.", e);
+            }
+        }
+    </script>
+</body>
+</html>
